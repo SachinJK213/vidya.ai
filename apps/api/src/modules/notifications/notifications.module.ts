@@ -1,18 +1,26 @@
 import { Module } from '@nestjs/common';
+import { BullModule } from '@nestjs/bull';
+import { ConfigService } from '@nestjs/config';
 import { EMAIL_PROVIDER } from './providers/email/email.interface';
 import { SMS_PROVIDER } from './providers/sms/sms.interface';
 import { SmtpEmailProvider } from './providers/email/smtp.provider';
 import { Msg91SmsProvider } from './providers/sms/msg91.provider';
-import { ConfigService } from '@nestjs/config';
+import { NotificationService } from './notification.service';
+import { NotificationController } from './notification.controller';
+import { NotificationProcessor } from './notification.processor';
+import { AiModule } from '../ai/ai.module';
 
 @Module({
+  imports: [
+    BullModule.registerQueue({ name: 'notifications' }),
+    AiModule,
+  ],
   providers: [
     {
       provide: EMAIL_PROVIDER,
       inject: [ConfigService],
       useFactory: (config: ConfigService) => {
         const provider = config.get<string>('EMAIL_PROVIDER', 'smtp');
-        // sendgrid | ses providers added here as needed
         return new SmtpEmailProvider(config);
       },
     },
@@ -25,7 +33,10 @@ import { ConfigService } from '@nestjs/config';
         return new Msg91SmsProvider(config);
       },
     },
+    NotificationService,
+    NotificationProcessor,
   ],
-  exports: [EMAIL_PROVIDER, SMS_PROVIDER],
+  controllers: [NotificationController],
+  exports: [EMAIL_PROVIDER, SMS_PROVIDER, NotificationService],
 })
 export class NotificationsModule {}

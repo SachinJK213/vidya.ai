@@ -1,3 +1,20 @@
+export enum Gender {
+  MALE = 'MALE',
+  FEMALE = 'FEMALE',
+  OTHER = 'OTHER',
+  PREFER_NOT_TO_SAY = 'PREFER_NOT_TO_SAY',
+}
+
+export enum NotificationStatus {
+  PENDING = 'PENDING',
+  QUEUED = 'QUEUED',
+  SENT = 'SENT',
+  DELIVERED = 'DELIVERED',
+  FAILED = 'FAILED',
+  READ = 'READ',
+  THROTTLED = 'THROTTLED',
+}
+
 export enum Role {
   SUPER_ADMIN = 'SUPER_ADMIN',
   SCHOOL_ADMIN = 'SCHOOL_ADMIN',

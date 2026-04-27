@@ -18,6 +18,7 @@ import { validateConfig } from './config/config.validation';
     ConfigModule.forRoot({
       isGlobal: true,
       validate: validateConfig,
+      envFilePath: ['.env', '../../.env'],
     }),
     BullModule.forRootAsync({
       inject: [ConfigService],

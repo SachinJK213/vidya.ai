@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import AppLayout from '@/components/layout/AppLayout'
 import { Card, CardContent } from '@/components/ui/card'
@@ -12,7 +12,7 @@ import { toast } from '@/components/ui/toaster'
 import { formatDate } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 import { Loader2, Save } from 'lucide-react'
-import { AttendanceStatus } from '@vidyaai/shared'
+import { AttendanceStatus } from '@/lib/enums'
 
 interface Student {
   id: string
@@ -59,16 +59,18 @@ export default function MarkAttendance() {
     queryKey: ['attendance-sheet', date, grade, section],
     queryFn: () => api.get<Student[]>(`/attendance?${params}`),
     enabled: !!date,
-    select: (data) => {
-      // seed local statuses from existing records
-      const initial: Record<string, AttendanceStatus> = {}
-      data.forEach((s) => {
-        if (s.attendance) initial[s.id] = s.attendance.status
-      })
-      setStatuses((prev) => ({ ...initial, ...prev }))
-      return data
-    },
   })
+
+  useEffect(() => {
+    if (!students) return
+    setStatuses((prev) => {
+      const seeded: Record<string, AttendanceStatus> = {}
+      students.forEach((s) => {
+        if (s.attendance && !prev[s.id]) seeded[s.id] = s.attendance.status
+      })
+      return Object.keys(seeded).length ? { ...prev, ...seeded } : prev
+    })
+  }, [students])
 
   const { mutate: save, isPending } = useMutation({
     mutationFn: () => {

@@ -1,6 +1,6 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
-import { Role } from '@vidyaai/shared'
+import { Role } from '@/lib/enums'
 import { Button } from '@/components/ui/button'
 import {
   LogOut,

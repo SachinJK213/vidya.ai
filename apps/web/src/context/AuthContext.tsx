@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
 import { api } from '@/lib/api'
-import { Role } from '@vidyaai/shared'
+import { Role } from '@/lib/enums'
 
 interface AuthUser {
   sub: string

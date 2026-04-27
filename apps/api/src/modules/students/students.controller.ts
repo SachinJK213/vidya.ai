@@ -19,7 +19,8 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { TenantId } from '../../common/decorators/tenant.decorator';
-import { Role } from '@vidyaai/shared';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { Role, JwtPayload } from '@vidyaai/shared';
 
 @Controller()
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -56,6 +57,15 @@ export class StudentsController {
   @Roles(Role.SUPER_ADMIN, Role.SCHOOL_ADMIN)
   create(@TenantId() tenantId: string, @Body() dto: CreateStudentDto) {
     return this.studentsService.create(tenantId, dto);
+  }
+
+  @Get('students/my-children')
+  @Roles(Role.PARENT)
+  getMyChildren(
+    @TenantId() tenantId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.studentsService.findByParent(tenantId, user.sub);
   }
 
   @Get('students')

@@ -161,6 +161,28 @@ export class StudentsService {
     return student;
   }
 
+  async findByParent(tenantId: string, userId: string) {
+    const memberships = await this.prisma.familyMember.findMany({
+      where: { userId, family: { tenantId } },
+      select: { familyId: true },
+    });
+    const familyIds = memberships.map((m) => m.familyId);
+
+    return this.prisma.student.findMany({
+      where: { tenantId, familyId: { in: familyIds }, isActive: true },
+      orderBy: [{ grade: 'asc' }, { lastName: 'asc' }],
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        grade: true,
+        section: true,
+        admissionNo: true,
+        isActive: true,
+      },
+    });
+  }
+
   async update(tenantId: string, id: string, dto: UpdateStudentDto) {
     await this.findOne(tenantId, id);
     return this.prisma.student.update({

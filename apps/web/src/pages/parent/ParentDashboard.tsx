@@ -101,14 +101,13 @@ function StudentCard({ student }: { student: Student }) {
 export default function ParentDashboard() {
   const { user } = useAuth()
 
-  const { data: students, isLoading } = useQuery<{ data: Student[] }>({
+  const { data: students, isLoading } = useQuery<Student[]>({
     queryKey: ['parent-students', user?.sub],
-    queryFn: () => api.get<{ data: Student[] }>('/students?limit=50'),
+    queryFn: () => api.get<Student[]>('/students/my-children'),
     enabled: !!user,
-    select: (res) => res,
   })
 
-  const allStudents = students?.data ?? []
+  const allStudents = students ?? []
 
   return (
     <AppLayout>

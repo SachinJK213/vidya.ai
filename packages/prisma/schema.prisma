@@ -1,0 +1,260 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum Role {
+  SUPER_ADMIN
+  SCHOOL_ADMIN
+  TEACHER
+  PARENT
+  STUDENT
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  PREFER_NOT_TO_SAY
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+enum NotificationType {
+  ABSENCE_ALERT
+  ANNOUNCEMENT
+  EMERGENCY
+  ASSIGNMENT_DUE
+  FEE_REMINDER
+  AI_WEEKLY_SUMMARY
+  AI_DRAFT_MESSAGE
+}
+
+enum NotificationChannel {
+  EMAIL
+  SMS
+  IN_APP
+  PUSH
+  WHATSAPP
+}
+
+enum NotificationStatus {
+  PENDING
+  QUEUED
+  SENT
+  DELIVERED
+  FAILED
+  READ
+  THROTTLED
+}
+
+enum DeploymentMode {
+  SAAS
+  MICROSAAS
+  ONPREM
+}
+
+// ─── Core Models ──────────────────────────────────────────────────────────────
+
+model Tenant {
+  id             String         @id @default(cuid())
+  name           String
+  code           String         @unique
+  domain         String?        @unique
+  deploymentMode DeploymentMode @default(SAAS)
+  isActive       Boolean        @default(true)
+  settings       Json           @default("{}")
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  // On-prem tenant isolation:
+  // - databaseUrl: set when this tenant uses their own Postgres instance (encrypted at rest)
+  // - schemaName:  set when using schema-per-tenant isolation within a shared cluster
+  // Both null = shared DB pool with tenant_id row-level filtering (SaaS default)
+  databaseUrl    String?
+  schemaName     String?
+
+  users              User[]
+  students           Student[]
+  families           Family[]
+  attendanceEvents   AttendanceEvent[]
+  notificationEvents NotificationEvent[]
+  notificationConfig TenantNotificationConfig?
+
+  @@map("tenants")
+}
+
+model User {
+  id           String    @id @default(cuid())
+  tenantId     String
+  email        String
+  passwordHash String
+  role         Role
+  firstName    String
+  lastName     String
+  phone        String?
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  tenant            Tenant              @relation(fields: [tenantId], references: [id])
+  familyMemberships FamilyMember[]
+  markedAttendance  AttendanceEvent[]   @relation("MarkedBy")
+  receivedNotifications NotificationEvent[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@index([tenantId, role])
+  @@map("users")
+}
+
+model Family {
+  id          String   @id @default(cuid())
+  tenantId    String
+  familyCode  String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant   Tenant         @relation(fields: [tenantId], references: [id])
+  members  FamilyMember[]
+  students Student[]
+
+  @@unique([tenantId, familyCode])
+  @@index([tenantId])
+  @@map("families")
+}
+
+model FamilyMember {
+  id           String  @id @default(cuid())
+  familyId     String
+  userId       String
+  relationship String
+  isPrimary    Boolean @default(false)
+
+  family Family @relation(fields: [familyId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@unique([familyId, userId])
+  @@map("family_members")
+}
+
+model Student {
+  id             String   @id @default(cuid())
+  tenantId       String
+  familyId       String
+  admissionNo    String
+  firstName      String
+  lastName       String
+  dateOfBirth    DateTime @db.Date
+  gender         Gender
+  grade          String
+  section        String?
+  rollNo         String?
+  enrollmentDate DateTime @default(now()) @db.Date
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  tenant           Tenant            @relation(fields: [tenantId], references: [id])
+  family           Family            @relation(fields: [familyId], references: [id])
+  attendanceEvents AttendanceEvent[]
+
+  @@unique([tenantId, admissionNo])
+  @@index([tenantId])
+  @@index([tenantId, grade, section])
+  @@map("students")
+}
+
+model AttendanceEvent {
+  id         String           @id @default(cuid())
+  tenantId   String
+  studentId  String
+  date       DateTime         @db.Date
+  status     AttendanceStatus
+  markedById String
+  note       String?
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  tenant    Tenant  @relation(fields: [tenantId], references: [id])
+  student   Student @relation(fields: [studentId], references: [id])
+  markedBy  User    @relation("MarkedBy", fields: [markedById], references: [id])
+
+  @@unique([tenantId, studentId, date])
+  @@index([tenantId])
+  @@index([tenantId, date])
+  @@index([tenantId, studentId])
+  @@map("attendance_events")
+}
+
+model NotificationEvent {
+  id          String              @id @default(cuid())
+  tenantId    String
+  type        NotificationType
+  channel     NotificationChannel
+  status      NotificationStatus  @default(PENDING)
+  recipientId String
+  payload     Json
+  scheduledAt DateTime?
+  sentAt      DateTime?
+  deliveredAt DateTime?
+  failedAt    DateTime?
+  error       String?
+  retryCount  Int                 @default(0)
+  isAiDraft   Boolean             @default(false)
+  approvedBy  String?
+  approvedAt  DateTime?
+  createdAt   DateTime            @default(now())
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id])
+  recipient User   @relation(fields: [recipientId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, recipientId])
+  @@index([tenantId, type])
+  @@map("notification_events")
+}
+
+// Stores per-tenant provider config — kept encrypted at rest
+// Different fields populated based on deployment mode
+model TenantNotificationConfig {
+  id       String @id @default(cuid())
+  tenantId String @unique
+
+  // Email
+  emailProvider    String? // sendgrid | ses | smtp
+  emailConfigJson  String? // encrypted JSON
+
+  // SMS
+  smsProvider    String? // msg91 | twilio | kannel | http_aggregator | disabled
+  smsConfigJson  String? // encrypted JSON
+
+  // Push
+  pushProvider    String? // fcm | fcm_proxy | disabled
+  pushConfigJson  String? // encrypted JSON
+
+  // Feature flags (on-prem overrides)
+  whatsappEnabled Boolean @default(false)
+  aiEnabled       Boolean @default(true)
+  aiProvider      String? // claude | ollama | disabled
+
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@map("tenant_notification_configs")
+}

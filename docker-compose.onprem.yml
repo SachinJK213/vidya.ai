@@ -1,0 +1,81 @@
+version: '3.9'
+
+# On-prem override — compose with base:
+#   docker-compose -f docker-compose.yml -f docker-compose.onprem.yml up -d
+#
+# Adds: MinIO (object storage), Prometheus, Grafana
+# Removes: external provider dependencies — all services are self-contained
+# Telemetry: disabled by default (TELEMETRY_ENABLED=false)
+
+services:
+  api:
+    environment:
+      - DEPLOYMENT_MODE=onprem
+      - STORAGE_PROVIDER=${STORAGE_PROVIDER:-minio}
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-vidyaai}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-vidyaai-secret}
+      - MINIO_BUCKET=${MINIO_BUCKET:-vidyaai-uploads}
+      - AI_PROVIDER=${AI_PROVIDER:-ollama}
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3}
+      - TELEMETRY_ENABLED=false
+      - PROMETHEUS_PORT=9090
+    depends_on:
+      - minio
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-vidyaai}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-vidyaai-secret}
+    volumes:
+      - minio_data:/data
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  # Local LLM for air-gapped AI features (optional — comment out if not needed)
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - '11434:11434'
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    ports:
+      - '9090:9090'
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./infra/grafana/dashboards:/etc/grafana/provisioning/dashboards
+    ports:
+      - '3001:3000'
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+volumes:
+  minio_data:
+  ollama_data:
+  prometheus_data:
+  grafana_data:

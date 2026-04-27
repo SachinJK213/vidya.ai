@@ -1,0 +1,19 @@
+{
+  "name": "vidyaai",
+  "private": true,
+  "scripts": {
+    "dev:api": "pnpm --filter @vidyaai/api dev",
+    "dev:web": "pnpm --filter @vidyaai/web dev",
+    "build": "pnpm -r build",
+    "db:generate": "pnpm --filter @vidyaai/prisma generate",
+    "db:migrate": "pnpm --filter @vidyaai/prisma migrate:dev",
+    "db:studio": "pnpm --filter @vidyaai/prisma studio"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  },
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  }
+}

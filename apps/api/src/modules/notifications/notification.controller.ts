@@ -10,7 +10,9 @@ import {
   DefaultValuePipe,
   UseGuards,
 } from '@nestjs/common';
-import { NotificationService, SendAnnouncementDto, SendEmergencyDto } from './notification.service';
+import { NotificationService } from './notification.service';
+import { SendAnnouncementDto } from './dto/send-announcement.dto';
+import { SendEmergencyDto } from './dto/send-emergency.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -43,6 +45,15 @@ export class NotificationController {
     return this.notificationService.sendEmergency(tenantId, sender, dto);
   }
 
+  @Get('unread-count')
+  @Roles(Role.PARENT, Role.TEACHER, Role.SCHOOL_ADMIN, Role.SUPER_ADMIN)
+  getUnreadCount(
+    @TenantId() tenantId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.notificationService.getUnreadCount(tenantId, user.sub);
+  }
+
   @Get('my')
   @Roles(Role.PARENT, Role.TEACHER, Role.SCHOOL_ADMIN, Role.SUPER_ADMIN)
   listMine(
@@ -52,6 +63,25 @@ export class NotificationController {
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
   ) {
     return this.notificationService.listForRecipient(tenantId, user.sub, page, limit);
+  }
+
+  @Patch('read-all')
+  @Roles(Role.PARENT, Role.TEACHER, Role.SCHOOL_ADMIN, Role.SUPER_ADMIN)
+  markAllRead(
+    @TenantId() tenantId: string,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.notificationService.markAllRead(tenantId, user.sub);
+  }
+
+  @Patch(':id/read')
+  @Roles(Role.PARENT, Role.TEACHER, Role.SCHOOL_ADMIN, Role.SUPER_ADMIN)
+  markAsRead(
+    @TenantId() tenantId: string,
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+  ) {
+    return this.notificationService.markAsRead(tenantId, user.sub, id);
   }
 
   @Patch(':id/approve')

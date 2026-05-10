@@ -8,6 +8,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuthService } from '../auth/auth.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 import { JwtPayload, Role } from '@vidyaai/shared';
 
 const USER_SELECT = {
@@ -33,6 +34,13 @@ export class UsersService {
 
   async create(tenantId: string, caller: JwtPayload, dto: CreateUserDto) {
     this.assertCanCreate(caller, dto.role);
+
+    const license = await this.prisma.tenantLicense.findUnique({ where: { tenantId } });
+    if (license) {
+      const userCount = await this.prisma.user.count({ where: { tenantId, isActive: true } });
+      if (userCount >= license.maxUsers)
+        throw new ForbiddenException(`License limit reached: this plan allows up to ${license.maxUsers} users`);
+    }
 
     const exists = await this.prisma.user.findUnique({
       where: { tenantId_email: { tenantId, email: dto.email } },
@@ -89,6 +97,27 @@ export class UsersService {
       data: dto,
       select: USER_SELECT,
     });
+  }
+
+  async updateProfile(tenantId: string, id: string, dto: UpdateProfileDto) {
+    await this.findOne(tenantId, id);
+    return this.prisma.user.update({
+      where: { id },
+      data: dto,
+      select: USER_SELECT,
+    });
+  }
+
+  async changePassword(tenantId: string, id: string, currentPassword: string, newPassword: string) {
+    const user = await this.prisma.user.findFirst({ where: { id, tenantId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    const valid = await this.authService.verifyPassword(currentPassword, user.passwordHash);
+    if (!valid) throw new ForbiddenException('Current password is incorrect');
+
+    const passwordHash = await this.authService.hashPassword(newPassword);
+    await this.prisma.user.update({ where: { id }, data: { passwordHash } });
+    return { success: true };
   }
 
   async deactivate(tenantId: string, id: string) {

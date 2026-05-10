@@ -8,8 +8,9 @@ import {
 import { Gender } from '@vidyaai/shared';
 
 export class CreateStudentDto {
+  @IsOptional()
   @IsString()
-  familyId: string;
+  familyId?: string;
 
   @IsString()
   @MaxLength(30)

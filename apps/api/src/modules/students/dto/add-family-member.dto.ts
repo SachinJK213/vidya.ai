@@ -1,8 +1,13 @@
-import { IsString, IsBoolean, IsOptional } from 'class-validator';
+import { IsString, IsBoolean, IsOptional, IsEmail, ValidateIf } from 'class-validator';
 
 export class AddFamilyMemberDto {
+  @ValidateIf((o) => !o.userEmail)
   @IsString()
-  userId: string;
+  userId?: string;
+
+  @ValidateIf((o) => !o.userId)
+  @IsEmail()
+  userEmail?: string;
 
   @IsString()
   relationship: string;

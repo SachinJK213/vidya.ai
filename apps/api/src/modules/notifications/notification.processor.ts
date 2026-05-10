@@ -17,6 +17,12 @@ interface SendNotificationJob {
   notificationEventId: string;
 }
 
+interface WeeklySummaryJob {
+  tenantId: string;
+  studentId: string;
+  weekStart: string;
+}
+
 @Processor('notifications')
 export class NotificationProcessor {
   private readonly logger = new Logger(NotificationProcessor.name);
@@ -27,6 +33,56 @@ export class NotificationProcessor {
     @Inject(EMAIL_PROVIDER) private emailProvider: IEmailProvider | null,
     @Inject(SMS_PROVIDER) private smsProvider: ISmsProvider | null,
   ) {}
+
+  @Process('send-mfa-email')
+  async handleMfaEmail(job: Job<{ to: string; type: 'OTP' | 'MAGIC_LINK'; value: string }>) {
+    const { to, type, value } = job.data;
+
+    if (!this.emailProvider) {
+      this.logger.warn(`[DEV] MFA ${type} for ${to} → ${value}`);
+      return;
+    }
+
+    if (type === 'OTP') {
+      await this.emailProvider.send({
+        to,
+        subject: 'Your VidyaAI verification code',
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
+            <h2 style="color: #4f46e5;">VidyaAI — Verification Code</h2>
+            <p>Use the code below to complete your sign-in. It expires in <strong>10 minutes</strong>.</p>
+            <div style="font-size: 36px; font-weight: bold; letter-spacing: 8px; text-align: center;
+              padding: 20px; background: #f5f5ff; border-radius: 8px; color: #4f46e5;">
+              ${value}
+            </div>
+            <p style="color: #888; font-size: 12px; margin-top: 20px;">
+              If you did not request this code, you can safely ignore this email.
+            </p>
+          </div>
+        `,
+      });
+    } else {
+      await this.emailProvider.send({
+        to,
+        subject: 'Sign in to VidyaAI',
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto;">
+            <h2 style="color: #4f46e5;">VidyaAI — Magic Sign-in Link</h2>
+            <p>Click the button below to sign in to your account. This link expires in <strong>15 minutes</strong> and can only be used once.</p>
+            <div style="text-align: center; margin: 24px 0;">
+              <a href="${value}" style="background: #4f46e5; color: white; padding: 12px 28px;
+                border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 16px;">
+                Sign in to VidyaAI
+              </a>
+            </div>
+            <p style="color: #888; font-size: 12px;">
+              If you didn't request this link, you can safely ignore this email.
+            </p>
+          </div>
+        `,
+      });
+    }
+  }
 
   @Process('absence-alert')
   async handleAbsenceAlert(job: Job<AbsenceAlertJob>) {
@@ -106,6 +162,81 @@ export class NotificationProcessor {
     this.logger.log(
       `Absence alert created for ${studentName} (${date}). AI draft: ${!!aiDraft}`,
     );
+  }
+
+  @Process('generate-weekly-summary')
+  async handleWeeklySummary(job: Job<WeeklySummaryJob>) {
+    const { tenantId, studentId, weekStart } = job.data;
+
+    const student = await this.prisma.student.findFirst({
+      where: { id: studentId, tenantId },
+      select: {
+        firstName: true, lastName: true, grade: true,
+        family: {
+          select: {
+            members: {
+              where: { isPrimary: true },
+              select: { user: { select: { id: true } } },
+            },
+          },
+        },
+      },
+    });
+    if (!student) return;
+
+    const primaryParent = student.family?.members[0]?.user;
+    if (!primaryParent) return;
+
+    const start = new Date(weekStart);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 7);
+
+    const events = await this.prisma.attendanceEvent.findMany({
+      where: { tenantId, studentId, date: { gte: start, lt: end } },
+      select: { date: true, status: true },
+    });
+
+    const totalDays = events.length;
+    const presentDays = events.filter((e) => e.status === 'PRESENT').length;
+    const absenceDates = events
+      .filter((e) => e.status === 'ABSENT')
+      .map((e) => e.date.toISOString().split('T')[0]);
+
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } });
+
+    const aiText = await this.aiService.summarizeWeeklyAttendance({
+      studentName: `${student.firstName} ${student.lastName}`,
+      grade: student.grade,
+      presentDays,
+      totalDays,
+      absenceDates,
+      schoolName: tenant?.name ?? '',
+    });
+
+    if (!aiText) return;
+
+    const notif = await this.prisma.notificationEvent.create({
+      data: {
+        tenantId,
+        type: 'AI_WEEKLY_SUMMARY',
+        channel: 'EMAIL',
+        recipientId: primaryParent.id,
+        isAiDraft: true,
+        status: 'PENDING',
+        payload: {
+          studentName: `${student.firstName} ${student.lastName}`,
+          grade: student.grade,
+          weekStart,
+          presentDays,
+          totalDays,
+          absenceDates,
+          aiSummary: aiText,
+        },
+      },
+      select: { id: true },
+    });
+
+    this.logger.log(`Generated weekly summary for student ${studentId}, notif ${notif.id}`);
   }
 
   @Process('send-notification')

@@ -1,0 +1,9 @@
+version: '3.9'
+
+# Dev port override — use when port 5432 is already occupied on the host.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up postgres redis -d
+
+services:
+  postgres:
+    ports:
+      - '5433:5432'

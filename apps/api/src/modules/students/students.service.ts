@@ -2,6 +2,7 @@ import {
   Injectable,
   ConflictException,
   NotFoundException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CreateStudentDto } from './dto/create-student.dto';
@@ -82,33 +83,49 @@ export class StudentsService {
   async addFamilyMember(tenantId: string, familyId: string, dto: AddFamilyMemberDto) {
     await this.findFamily(tenantId, familyId);
 
-    const userExists = await this.prisma.user.findFirst({
-      where: { id: dto.userId, tenantId },
-    });
-    if (!userExists) throw new NotFoundException('User not found in this tenant');
+    let resolvedUserId: string;
+    if (dto.userId) {
+      const userExists = await this.prisma.user.findFirst({ where: { id: dto.userId, tenantId } });
+      if (!userExists) throw new NotFoundException('User not found in this tenant');
+      resolvedUserId = dto.userId;
+    } else if (dto.userEmail) {
+      const userByEmail = await this.prisma.user.findFirst({ where: { email: dto.userEmail, tenantId } });
+      if (!userByEmail) throw new NotFoundException(`User with email ${dto.userEmail} not found in this tenant`);
+      resolvedUserId = userByEmail.id;
+    } else {
+      throw new NotFoundException('Provide either userId or userEmail');
+    }
 
     return this.prisma.familyMember.upsert({
-      where: { familyId_userId: { familyId, userId: dto.userId } },
-      create: {
-        familyId,
-        userId: dto.userId,
-        relationship: dto.relationship,
-        isPrimary: dto.isPrimary ?? false,
-      },
-      update: {
-        relationship: dto.relationship,
-        isPrimary: dto.isPrimary ?? false,
-      },
+      where: { familyId_userId: { familyId, userId: resolvedUserId } },
+      create: { familyId, userId: resolvedUserId, relationship: dto.relationship, isPrimary: dto.isPrimary ?? false },
+      update: { relationship: dto.relationship, isPrimary: dto.isPrimary ?? false },
     });
   }
 
   // ─── Students ────────────────────────────────────────────────────────────────
 
   async create(tenantId: string, dto: CreateStudentDto) {
-    const familyExists = await this.prisma.family.findFirst({
-      where: { id: dto.familyId, tenantId },
-    });
-    if (!familyExists) throw new NotFoundException('Family not found in this tenant');
+    let familyId = dto.familyId;
+
+    if (familyId) {
+      const familyExists = await this.prisma.family.findFirst({ where: { id: familyId, tenantId } });
+      if (!familyExists) throw new NotFoundException('Family not found in this tenant');
+    } else {
+      // Auto-create a placeholder family keyed by admission number
+      const auto = await this.prisma.family.create({
+        data: { tenantId, familyCode: `AUTO-${dto.admissionNo}` },
+        select: { id: true },
+      });
+      familyId = auto.id;
+    }
+
+    const license = await this.prisma.tenantLicense.findUnique({ where: { tenantId } });
+    if (license) {
+      const studentCount = await this.prisma.student.count({ where: { tenantId, isActive: true } });
+      if (studentCount >= license.maxStudents)
+        throw new ForbiddenException(`License limit reached: this plan allows up to ${license.maxStudents} students`);
+    }
 
     const admissionExists = await this.prisma.student.findUnique({
       where: { tenantId_admissionNo: { tenantId, admissionNo: dto.admissionNo } },
@@ -118,7 +135,7 @@ export class StudentsService {
     return this.prisma.student.create({
       data: {
         tenantId,
-        familyId: dto.familyId,
+        familyId,
         admissionNo: dto.admissionNo,
         firstName: dto.firstName,
         lastName: dto.lastName,

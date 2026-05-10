@@ -40,8 +40,9 @@ export class AttendanceController {
     @Query('date') date: string,
     @Query('grade') grade?: string,
     @Query('section') section?: string,
+    @Query('limit', new DefaultValuePipe(200), ParseIntPipe) limit?: number,
   ) {
-    return this.attendanceService.findByDate(tenantId, date, grade, section);
+    return this.attendanceService.findByDate(tenantId, date, grade, section, limit);
   }
 
   @Get('student/:studentId')

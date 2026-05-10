@@ -10,10 +10,19 @@ import {
   ParseIntPipe,
   DefaultValuePipe,
   UseGuards,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
+import { IsString, MinLength } from 'class-validator';
+
+class ChangePasswordDto {
+  @IsString() currentPassword: string;
+  @IsString() @MinLength(8) newPassword: string;
+}
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -25,6 +34,30 @@ import { Role, JwtPayload } from '@vidyaai/shared';
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class UsersController {
   constructor(private usersService: UsersService) {}
+
+  @Get('me')
+  getMe(@TenantId() tenantId: string, @CurrentUser() caller: JwtPayload) {
+    return this.usersService.findOne(tenantId, caller.sub);
+  }
+
+  @Patch('me')
+  updateMe(
+    @TenantId() tenantId: string,
+    @CurrentUser() caller: JwtPayload,
+    @Body() dto: UpdateProfileDto,
+  ) {
+    return this.usersService.updateProfile(tenantId, caller.sub, dto);
+  }
+
+  @Post('me/password')
+  @HttpCode(HttpStatus.OK)
+  changePassword(
+    @TenantId() tenantId: string,
+    @CurrentUser() caller: JwtPayload,
+    @Body() dto: ChangePasswordDto,
+  ) {
+    return this.usersService.changePassword(tenantId, caller.sub, dto.currentPassword, dto.newPassword);
+  }
 
   @Post()
   @Roles(Role.SUPER_ADMIN, Role.SCHOOL_ADMIN)

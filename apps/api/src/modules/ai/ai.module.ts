@@ -1,11 +1,14 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { BullModule } from '@nestjs/bull';
 import { AI_PROVIDER } from './providers/ai.interface';
 import { ClaudeAiProvider } from './providers/claude.provider';
 import { OllamaAiProvider } from './providers/ollama.provider';
 import { AiService } from './ai.service';
+import { AiSchedulerService } from './ai-scheduler.service';
 
 @Module({
+  imports: [BullModule.registerQueue({ name: 'notifications' })],
   providers: [
     {
       provide: AI_PROVIDER,
@@ -18,6 +21,7 @@ import { AiService } from './ai.service';
       },
     },
     AiService,
+    AiSchedulerService,
   ],
   exports: [AiService],
 })

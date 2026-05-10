@@ -10,25 +10,36 @@ services:
       context: .
       dockerfile: apps/api/Dockerfile
     ports:
-      - '3000:3000'
+      - '4002:4002'
     environment:
       - NODE_ENV=${NODE_ENV:-production}
-      - DATABASE_URL=${DATABASE_URL}
-      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+      - PORT=4002
+      - DATABASE_URL=postgresql://vidyaai:vidyaai@postgres:5432/vidyaai
+      - REDIS_URL=redis://redis:6379
       - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-7d}
       - DEPLOYMENT_MODE=${DEPLOYMENT_MODE:-saas}
       - EMAIL_PROVIDER=${EMAIL_PROVIDER:-smtp}
+      - SMTP_HOST=mailhog
+      - SMTP_PORT=1025
+      - SMTP_SECURE=${SMTP_SECURE:-false}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - SMTP_FROM=${SMTP_FROM:-noreply@vidyaai.local}
       - SMS_PROVIDER=${SMS_PROVIDER:-disabled}
-      - AI_PROVIDER=${AI_PROVIDER:-claude}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - AI_PROVIDER=${AI_PROVIDER:-disabled}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3001}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      mailhog:
+        condition: service_started
+        required: false
     restart: unless-stopped
     healthcheck:
-      test: ['CMD', 'curl', '-f', 'http://localhost:3000/api/v1/health']
+      test: ['CMD', 'curl', '-f', 'http://localhost:4002/api/v1/health']
       interval: 30s
       timeout: 10s
       retries: 3
@@ -38,7 +49,7 @@ services:
       context: .
       dockerfile: apps/web/Dockerfile
     ports:
-      - '80:80'
+      - '3001:80'
     depends_on:
       - api
     restart: unless-stopped
@@ -52,7 +63,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - '5432:5432'
+      - '${POSTGRES_PORT:-5432}:5432'
     restart: unless-stopped
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-vidyaai}']
@@ -66,13 +77,23 @@ services:
     volumes:
       - redis_data:/data
     ports:
-      - '6379:6379'
+      - '${REDIS_PORT:-6379}:6379'
     restart: unless-stopped
     healthcheck:
       test: ['CMD', 'redis-cli', 'ping']
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # ─── Dev tools (start with: docker compose --profile dev up -d) ──────────────
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    profiles: ['dev']
+    ports:
+      - '${MAILHOG_SMTP_PORT:-1027}:1025'   # SMTP — API sends here (host 1027)
+      - '${MAILHOG_UI_PORT:-8026}:8025'     # Web UI — http://localhost:8026
+    restart: unless-stopped
 
 volumes:
   postgres_data:

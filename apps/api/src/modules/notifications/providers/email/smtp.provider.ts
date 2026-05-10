@@ -10,14 +10,14 @@ export class SmtpEmailProvider implements IEmailProvider {
   private transporter: nodemailer.Transporter;
 
   constructor(private config: ConfigService) {
+    const user = config.get<string>('SMTP_USER', '');
+    const pass = config.get<string>('SMTP_PASS', '');
     this.transporter = nodemailer.createTransport({
-      host: config.get<string>('SMTP_HOST'),
-      port: config.get<number>('SMTP_PORT', 587),
-      secure: config.get<boolean>('SMTP_SECURE', false),
-      auth: {
-        user: config.get<string>('SMTP_USER'),
-        pass: config.get<string>('SMTP_PASS'),
-      },
+      host: config.get<string>('SMTP_HOST', 'localhost'),
+      port: Number(config.get('SMTP_PORT', 1025)),
+      secure: config.get('SMTP_SECURE', 'false') === 'true',
+      // skip auth block entirely when credentials are absent (e.g. MailHog)
+      ...(user && pass ? { auth: { user, pass } } : {}),
     });
   }
 

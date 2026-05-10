@@ -13,8 +13,20 @@ interface AuthContextValue {
   user: AuthUser | null
   tenantCode: string
   login: (tenantCode: string, email: string, password: string) => Promise<void>
+  loginWithToken: (accessToken: string) => void
   logout: () => void
   isAuthenticated: boolean
+}
+
+export class MfaRequiredError extends Error {
+  mfaToken: string
+  _devCode?: string
+  constructor(mfaToken: string, devCode?: string) {
+    super('MFA verification required')
+    this.name = 'MfaRequiredError'
+    this.mfaToken = mfaToken
+    this._devCode = devCode
+  }
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -46,33 +58,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => localStorage.getItem('vidya_tenant') ?? '',
   )
 
-  const login = useCallback(
-    async (code: string, email: string, password: string) => {
-      localStorage.setItem('vidya_tenant', code)
-      setTenantCode(code)
+  const login = useCallback(async (code: string, email: string, password: string) => {
+    localStorage.setItem('vidya_tenant', code)
+    setTenantCode(code)
 
-      const res = await api.post<{ accessToken: string }>('/auth/login', {
-        email,
-        password,
-      })
+    const res = await api.post<any>('/auth/login', { email, password })
 
-      localStorage.setItem('vidya_token', res.accessToken)
-      setUser(parseJwt(res.accessToken))
-    },
-    [],
-  )
+    if (res.mfaRequired) {
+      throw new MfaRequiredError(res.mfaToken, res._devCode)
+    }
+
+    localStorage.setItem('vidya_token', res.accessToken)
+    setUser(parseJwt(res.accessToken))
+  }, [])
+
+  const loginWithToken = useCallback((accessToken: string) => {
+    localStorage.setItem('vidya_token', accessToken)
+    const parsed = parseJwt(accessToken)
+    const code = parsed.tenantId  // we re-derive tenant from JWT; LoginPage sets the code separately
+    localStorage.setItem('vidya_tenant', sessionStorage.getItem('vidya_tenant_pending') ?? code)
+    sessionStorage.removeItem('vidya_tenant_pending')
+    setTenantCode(localStorage.getItem('vidya_tenant') ?? '')
+    setUser(parsed)
+  }, [])
 
   const logout = useCallback(() => {
     localStorage.removeItem('vidya_token')
     localStorage.removeItem('vidya_tenant')
+    sessionStorage.removeItem('vidya_mfa_token')
+    sessionStorage.removeItem('vidya_tenant_pending')
     setUser(null)
     setTenantCode('')
   }, [])
 
   return (
-    <AuthContext.Provider
-      value={{ user, tenantCode, login, logout, isAuthenticated: !!user }}
-    >
+    <AuthContext.Provider value={{ user, tenantCode, login, loginWithToken, logout, isAuthenticated: !!user }}>
       {children}
     </AuthContext.Provider>
   )

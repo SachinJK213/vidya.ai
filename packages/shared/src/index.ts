@@ -38,6 +38,7 @@ export enum NotificationType {
   FEE_REMINDER = 'FEE_REMINDER',
   AI_WEEKLY_SUMMARY = 'AI_WEEKLY_SUMMARY',
   AI_DRAFT_MESSAGE = 'AI_DRAFT_MESSAGE',
+  LICENSE_EXPIRY_REMINDER = 'LICENSE_EXPIRY_REMINDER',
 }
 
 export enum NotificationChannel {
@@ -54,11 +55,34 @@ export enum DeploymentMode {
   ONPREM = 'ONPREM',
 }
 
+export enum LicensePlan {
+  TRIAL = 'TRIAL',
+  STARTER = 'STARTER',
+  PROFESSIONAL = 'PROFESSIONAL',
+  ENTERPRISE = 'ENTERPRISE',
+}
+
+export enum LicenseStatus {
+  ACTIVE = 'ACTIVE',
+  EXPIRING_SOON = 'EXPIRING_SOON',
+  GRACE_PERIOD = 'GRACE_PERIOD',
+  EXPIRED = 'EXPIRED',
+  SUSPENDED = 'SUSPENDED',
+}
+
+export const PLAN_DEFAULTS: Record<LicensePlan, { maxStudents: number; maxUsers: number; durationDays: number; features: Record<string, boolean> }> = {
+  [LicensePlan.TRIAL]:        { maxStudents: 50,     maxUsers: 10,   durationDays: 30,  features: { aiEnabled: false, smsEnabled: false, whatsappEnabled: false } },
+  [LicensePlan.STARTER]:      { maxStudents: 300,    maxUsers: 40,   durationDays: 365, features: { aiEnabled: true,  smsEnabled: false, whatsappEnabled: false } },
+  [LicensePlan.PROFESSIONAL]: { maxStudents: 1500,   maxUsers: 150,  durationDays: 365, features: { aiEnabled: true,  smsEnabled: true,  whatsappEnabled: false } },
+  [LicensePlan.ENTERPRISE]:   { maxStudents: 999999, maxUsers: 9999, durationDays: 365, features: { aiEnabled: true,  smsEnabled: true,  whatsappEnabled: true  } },
+};
+
 export interface JwtPayload {
   sub: string;
   tenantId: string;
   role: Role;
   email: string;
+  mfaPending?: boolean;
 }
 
 export interface ApiResponse<T> {

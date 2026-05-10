@@ -1,6 +1,7 @@
 generator client {
-  provider = "prisma-client-js"
-  output   = "../../node_modules/.prisma/client"
+  provider      = "prisma-client-js"
+  output        = "../../node_modules/.prisma/client"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
@@ -40,6 +41,14 @@ enum NotificationType {
   FEE_REMINDER
   AI_WEEKLY_SUMMARY
   AI_DRAFT_MESSAGE
+  LICENSE_EXPIRY_REMINDER
+}
+
+enum LicensePlan {
+  TRIAL
+  STARTER
+  PROFESSIONAL
+  ENTERPRISE
 }
 
 enum NotificationChannel {
@@ -64,6 +73,12 @@ enum DeploymentMode {
   SAAS
   MICROSAAS
   ONPREM
+}
+
+enum MfaChallengeType {
+  EMAIL_OTP
+  SMS_OTP
+  MAGIC_LINK
 }
 
 // ─── Core Models ──────────────────────────────────────────────────────────────
@@ -92,6 +107,7 @@ model Tenant {
   attendanceEvents   AttendanceEvent[]
   notificationEvents NotificationEvent[]
   notificationConfig TenantNotificationConfig?
+  license            TenantLicense?
 
   @@map("tenants")
 }
@@ -107,13 +123,16 @@ model User {
   phone        String?
   isActive     Boolean   @default(true)
   lastLoginAt  DateTime?
+  mfaEnabled   Boolean   @default(false)
+  mfaMethod    String?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  tenant            Tenant              @relation(fields: [tenantId], references: [id])
-  familyMemberships FamilyMember[]
-  markedAttendance  AttendanceEvent[]   @relation("MarkedBy")
+  tenant                Tenant              @relation(fields: [tenantId], references: [id])
+  familyMemberships     FamilyMember[]
+  markedAttendance      AttendanceEvent[]   @relation("MarkedBy")
   receivedNotifications NotificationEvent[]
+  mfaChallenges         MfaChallenge[]
 
   @@unique([tenantId, email])
   @@index([tenantId])
@@ -176,6 +195,22 @@ model Student {
   @@index([tenantId])
   @@index([tenantId, grade, section])
   @@map("students")
+}
+
+model MfaChallenge {
+  id        String           @id @default(cuid())
+  userId    String
+  code      String
+  type      MfaChallengeType
+  expiresAt DateTime
+  usedAt    DateTime?
+  attempts  Int              @default(0)
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@map("mfa_challenges")
 }
 
 model AttendanceEvent {
@@ -257,4 +292,41 @@ model TenantNotificationConfig {
   tenant Tenant @relation(fields: [tenantId], references: [id])
 
   @@map("tenant_notification_configs")
+}
+
+// ─── License Models ───────────────────────────────────────────────────────────
+
+model TenantLicense {
+  id           String      @id @default(cuid())
+  tenantId     String      @unique
+  plan         LicensePlan
+  maxStudents  Int
+  maxUsers     Int
+  features     Json        @default("{\"aiEnabled\":true,\"smsEnabled\":false,\"whatsappEnabled\":false}")
+  isSuspended  Boolean     @default(false)
+  startsAt     DateTime    @default(now())
+  expiresAt    DateTime
+  notes        String?
+  assignedById String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant    Tenant            @relation(fields: [tenantId], references: [id])
+  reminders LicenseReminder[]
+
+  @@index([expiresAt])
+  @@map("tenant_licenses")
+}
+
+model LicenseReminder {
+  id          String   @id @default(cuid())
+  licenseId   String
+  sentById    String?
+  triggerDays Int
+  sentAt      DateTime @default(now())
+
+  license TenantLicense @relation(fields: [licenseId], references: [id])
+
+  @@map("license_reminders")
 }

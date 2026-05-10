@@ -32,7 +32,7 @@ class EnvironmentVariables {
   @IsOptional()
   EMAIL_PROVIDER: string = 'smtp';
 
-  @IsEnum(['msg91', 'twilio', 'kannel', 'http_aggregator', 'disabled'])
+  @IsEnum(['msg91', 'twilio', 'kannel', 'http_aggregator', 'dev', 'disabled'])
   @IsOptional()
   SMS_PROVIDER: string = 'disabled';
 

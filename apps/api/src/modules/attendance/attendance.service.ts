@@ -67,13 +67,14 @@ export class AttendanceService {
     return { marked: results.length, results };
   }
 
-  async findByDate(tenantId: string, date: string, grade?: string, section?: string) {
+  async findByDate(tenantId: string, date: string, grade?: string, section?: string, limit = 200) {
     const studentWhere: any = { tenantId, isActive: true };
     if (grade) studentWhere.grade = grade;
     if (section) studentWhere.section = section;
 
     const students = await this.prisma.student.findMany({
       where: studentWhere,
+      take: Math.min(limit, 500),
       select: { id: true, firstName: true, lastName: true, admissionNo: true, grade: true, section: true, rollNo: true },
       orderBy: [{ grade: 'asc' }, { rollNo: 'asc' }, { lastName: 'asc' }],
     });

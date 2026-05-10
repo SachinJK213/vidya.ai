@@ -1,18 +1,10 @@
-import { Injectable, Inject, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { JwtPayload, Role } from '@vidyaai/shared';
-
-export interface SendAnnouncementDto {
-  subject: string;
-  body: string;
-  targetRoles?: Role[];
-}
-
-export interface SendEmergencyDto {
-  message: string;
-}
+import { SendAnnouncementDto } from './dto/send-announcement.dto';
+import { SendEmergencyDto } from './dto/send-emergency.dto';
 
 @Injectable()
 export class NotificationService {
@@ -28,7 +20,7 @@ export class NotificationService {
 
     const recipients = await this.prisma.user.findMany({
       where: { tenantId, isActive: true, role: { in: targetRoles as any[] } },
-      select: { id: true, email: true, firstName: true, lastName: true },
+      select: { id: true },
     });
 
     const events = await Promise.all(
@@ -42,7 +34,7 @@ export class NotificationService {
             payload: {
               subject: dto.subject,
               body: dto.body,
-              senderName: `${sender.email}`,
+              senderEmail: sender.email,
             },
           },
           select: { id: true },
@@ -60,7 +52,7 @@ export class NotificationService {
   async sendEmergency(tenantId: string, sender: JwtPayload, dto: SendEmergencyDto) {
     const recipients = await this.prisma.user.findMany({
       where: { tenantId, isActive: true, role: { in: ['PARENT', 'TEACHER'] as any[] } },
-      select: { id: true, email: true },
+      select: { id: true },
     });
 
     const events = await Promise.all(
@@ -115,11 +107,48 @@ export class NotificationService {
     return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
   }
 
+  async getUnreadCount(tenantId: string, recipientId: string): Promise<{ unread: number }> {
+    const unread = await this.prisma.notificationEvent.count({
+      where: {
+        tenantId,
+        recipientId,
+        status: { notIn: ['READ', 'FAILED'] },
+      },
+    });
+    return { unread };
+  }
+
+  async markAsRead(tenantId: string, recipientId: string, notificationEventId: string) {
+    const event = await this.prisma.notificationEvent.findFirst({
+      where: { id: notificationEventId, tenantId, recipientId },
+    });
+    if (!event) throw new NotFoundException('Notification not found');
+
+    await this.prisma.notificationEvent.update({
+      where: { id: notificationEventId },
+      data: { status: 'READ' },
+    });
+
+    return { read: true };
+  }
+
+  async markAllRead(tenantId: string, recipientId: string) {
+    const { count } = await this.prisma.notificationEvent.updateMany({
+      where: {
+        tenantId,
+        recipientId,
+        status: { notIn: ['READ', 'FAILED', 'PENDING'] },
+      },
+      data: { status: 'READ' },
+    });
+    return { marked: count };
+  }
+
   async approveAiDraft(tenantId: string, approverId: string, notificationEventId: string) {
     const event = await this.prisma.notificationEvent.findFirst({
-      where: { id: notificationEventId, tenantId, isAiDraft: true },
+      where: { id: notificationEventId, tenantId, isAiDraft: true, status: 'PENDING' },
     });
-    if (!event) throw new Error('AI draft notification not found');
+    if (!event) throw new NotFoundException('Pending AI draft not found');
 
     await this.prisma.notificationEvent.update({
       where: { id: notificationEventId },
